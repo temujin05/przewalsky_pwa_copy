@@ -1,0 +1,53 @@
+name: Deploy to server
+
+on:
+  push:
+    branches:
+      - main   # Only main branch after commit
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Syntax check (ESLint)
+        run: |
+          npm install eslint --no-save
+          npx eslint . --ext .js || true
+
+      - name: Install rsync and ssh
+        run: sudo apt-get update && sudo apt-get install -y rsync openssh-client
+
+      - name: Upload to server via rsync
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+
+          mkdir -p "$HOME/.ssh"
+
+          printf "%s\n" "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+
+          cat >> "$HOME/.ssh/config" <<EOF
+          Host *
+            IdentityFile $HOME/.ssh/id_ed25519
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 "$HOME/.ssh/config"
+
+          ssh-keyscan -H "$DEPLOY_HOST" >> "$HOME/.ssh/known_hosts" || true
+          echo `ls $HOME/.ssh`
+          cat $HOME/.ssh/known_hosts
+          
+          echo 4
+          rsync -avz --delete \
+            --exclude '.git*' \
+            --exclude 'node_modules' \
+            "$GITHUB_WORKSPACE/" \
+            ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}
